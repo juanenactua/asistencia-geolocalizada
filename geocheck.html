@@ -1,87 +1,68 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Verificación de ubicación</title>
-  <style>
-    body { font-family: Arial, sans-serif; text-align: center; padding: 2rem; }
-    .error { color: #b00020; font-weight: 600; }
-    .ok { color: #0a7a07; font-weight: 600; }
-    small { color: #555; }
-  </style>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Verificación de asistencia</title>
+<style>
+  body { font-family: Arial, sans-serif; text-align: center; padding: 2em; }
+  #msg { margin-top: 2em; font-size: 1.2em; }
+</style>
 </head>
 <body>
-  <h2>Verificación de ubicación</h2>
-  <p>Por favor, permite el acceso a tu ubicación para continuar con el registro de asistencia.</p>
-  <p id="mensaje"><small>Cargando parámetros…</small></p>
+<h2>Verificación de asistencia</h2>
+<p>Por favor, permite el acceso a tu ubicación para registrar tu asistencia.</p>
+<div id="msg">Verificando ubicación...</div>
 
 <script>
-(function(){
-  function getParams() {
-    const p = new URLSearchParams(window.location.search);
-    return {
-      lat: parseFloat(p.get('lat')),
-      lon: parseFloat(p.get('lon')),
-      radio: parseFloat(p.get('radio')) || 50,
-      form: p.get('form') || '',
-      clase: p.get('clase') || '',
-      fecha: p.get('fecha') || ''
-    };
-  }
+function getQueryParam(param) {
+  const urlParams = new URLSearchParams(window.location.search);
+  return urlParams.get(param);
+}
 
-  function haversine(lat1, lon1, lat2, lon2) {
-    const R = 6371000;
-    const toRad = x => x * Math.PI / 180;
-    const dLat = toRad(lat2 - lat1);
-    const dLon = toRad(lon2 - lon1);
-    const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon/2)**2;
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    return R * c;
-  }
+const clase = getQueryParam("clase");
+const latClase = parseFloat(getQueryParam("lat"));
+const lonClase = parseFloat(getQueryParam("lon"));
+const radio = parseFloat(getQueryParam("radio"));
+const formUrl = decodeURIComponent(getQueryParam("form"));
 
-  const params = getParams();
-  const msgEl = document.getElementById('mensaje');
+function distanciaMetros(lat1, lon1, lat2, lon2) {
+  const R = 6371e3; // metros
+  const φ1 = lat1 * Math.PI / 180;
+  const φ2 = lat2 * Math.PI / 180;
+  const Δφ = (lat2 - lat1) * Math.PI / 180;
+  const Δλ = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(Δφ/2) ** 2 + Math.cos(φ1)*Math.cos(φ2)*Math.sin(Δλ/2) ** 2;
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  return R * c;
+}
 
-  if (!params.form) {
-    msgEl.textContent = 'Error: falta parámetro "form". Contacta al profesor.';
-    msgEl.className = 'error';
-    return;
-  }
-  if (isNaN(params.lat) || isNaN(params.lon)) {
-    msgEl.textContent = 'Error: coordenadas del aula inválidas.';
-    msgEl.className = 'error';
-    return;
-  }
-
-  msgEl.innerHTML = `Clase: <strong>${params.clase}</strong><br> Fecha: <strong>${params.fecha}</strong><br> Comprobando ubicación…`;
-
-  if (!navigator.geolocation) {
-    msgEl.textContent = 'Tu navegador no soporta geolocalización.';
-    msgEl.className = 'error';
-    return;
-  }
-
-  // Solicitar ubicación
-  navigator.geolocation.getCurrentPosition(function(pos) {
-    const uLat = pos.coords.latitude;
-    const uLon = pos.coords.longitude;
-    const distancia = haversine(params.lat, params.lon, uLat, uLon);
-
-    if (distancia <= params.radio) {
-      msgEl.textContent = `✅ Estás dentro del aula (distancia: ${Math.round(distancia)} m). Redirigiendo al formulario...`;
-      msgEl.className = 'ok';
-      // Redirige al Microsoft Form. No añadimos token a menos que necesites registrarlo por otro medio.
-      setTimeout(function(){ window.location.href = params.form; }, 1200);
-    } else {
-      msgEl.innerHTML = `❌ Estás fuera del área permitida (distancia: ${Math.round(distancia)} m). Debes estar en el aula para registrar asistencia.`;
-      msgEl.className = 'error';
+if (navigator.geolocation) {
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      const latUser = pos.coords.latitude;
+      const lonUser = pos.coords.longitude;
+      const dist = distanciaMetros(latClase, lonClase, latUser, lonUser);
+      if (dist <= radio) {
+        document.getElementById("msg").innerText = 
+          `Ubicación validada (${dist.toFixed(1)} m). Redirigiendo...`;
+        setTimeout(() => { window.location.href = formUrl; }, 1500);
+      } else {
+        document.getElementById("msg").innerHTML = 
+          `📍 Estás a ${dist.toFixed(1)} m del aula. <br>
+           Debes estar dentro de ${radio} m para registrar tu asistencia.`;
+      }
+    },
+    (error) => {
+      document.getElementById("msg").innerText = 
+        "❌ No se pudo obtener la ubicación. Activa el GPS y recarga la página.";
     }
-  }, function(err) {
-    msgEl.textContent = 'No fue posible obtener tu ubicación. Asegúrate de permitir el permiso y de tener GPS/ubicación activa.';
-    msgEl.className = 'error';
-  }, { enableHighAccuracy: true, timeout: 20000 });
-})();
+  );
+} else {
+  document.getElementById("msg").innerText = 
+    "⚠️ Tu navegador no soporta geolocalización.";
+}
 </script>
 </body>
 </html>
+
